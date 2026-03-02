@@ -1,24 +1,37 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { Injectable } from '@nestjs/common';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { CreateUserDto } from './dto/create-user.dto';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UserService {
   constructor(private prisma: PrismaService) {}
 
-  async create(createUserDto: CreateUserDto) {
-    const userExists = await this.findByEmail(createUserDto.email);
-
-    if (userExists) {
-      throw new Error('User already exists');
+  async create(dto: CreateUserDto) {
+    const existing = await this.findByEmail(dto.email);
+    if (existing) {
+      throw new ConflictException('User already exists'); // 409
     }
 
-    const user = await this.prisma.user.create({ data: createUserDto });
+    let hashPass: string;
+    try {
+      hashPass = await bcrypt.hash(dto.password, 10);
+    } catch {
+      throw new InternalServerErrorException('Error hashing password'); // 500
+    }
 
+    const user = await this.prisma.user.create({
+      data: { email: dto.email, password: hashPass },
+    });
+
+    // лучше возвращать DTO/mapper-ом, но ок:
     const { password, ...result } = user;
-
     return result;
   }
 
@@ -27,34 +40,22 @@ export class UserService {
   }
 
   async findOne(id: number) {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
-    });
-
-    if (!user) {
-      throw new Error('User not found');
-    }
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('User not found'); // 404
 
     const { password, ...result } = user;
-
     return result;
   }
 
+  // ВАЖНО: для проверок существования — не бросаем исключение
   async findByEmail(email: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    return this.prisma.user.findUnique({ where: { email } }); // user | null
+  }
 
-    if (!user) {
-      throw new Error('User not found');
-    }
-
+  // Если где-то реально нужно 404 по email:
+  async getByEmailOrThrow(email: string) {
+    const user = await this.findByEmail(email);
+    if (!user) throw new NotFoundException('User not found');
     return user;
-  }
-
-  update(id: number, updateUserDto: UpdateUserDto) {
-    return `This action updates a #${id} user`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} user`;
   }
 }
