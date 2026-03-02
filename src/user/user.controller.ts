@@ -47,6 +47,15 @@ export class UserController {
   }
 
   @Get(':id')
+  @ApiOperation({
+    summary: 'Получить пользователя',
+    description:
+      'Возвращает пользователя без чувствительных полей (например, password).',
+  })
+  @ApiOkResponse({
+    description: 'Пользователь',
+    type: UserDto,
+  })
   findOne(@Param('id') id: string) {
     return this.userService.findOne(+id);
   }
