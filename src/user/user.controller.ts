@@ -18,6 +18,15 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Post()
+  @ApiOperation({
+    summary: 'Создать пользователя',
+    description:
+      'Создает пользователя. Возвращает пользователя без чувствительных полей (например, password).',
+  })
+  @ApiOkResponse({
+    description: 'Пользователь',
+    type: UserDto,
+  })
   create(@Body() createUserDto: CreateUserDto) {
     return this.userService.create(createUserDto);
   }
