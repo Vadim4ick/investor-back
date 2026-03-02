@@ -35,6 +35,17 @@ export class UserService {
     return result;
   }
 
+  async comparePasswords(pass: string, hash: string) {
+    return await bcrypt.compare(pass, hash);
+  }
+
+  async updateRefreshTokenHash(userId: number, hash: string | null) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { refreshTokenHash: hash },
+    });
+  }
+
   findAll() {
     return this.prisma.user.findMany();
   }
