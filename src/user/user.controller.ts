@@ -1,26 +1,11 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Param } from '@nestjs/common';
 import { UserService } from './user.service';
-import { CreateUserDto } from './dto/create-user.dto';
 import { ApiOkResponse, ApiOperation } from '@nestjs/swagger';
 import { UserDto } from './dto/user.dto';
 
 @Controller('user')
 export class UserController {
   constructor(private readonly userService: UserService) {}
-
-  @Post()
-  @ApiOperation({
-    summary: 'Создать пользователя',
-    description:
-      'Создает пользователя. Возвращает пользователя без чувствительных полей (например, password).',
-  })
-  @ApiOkResponse({
-    description: 'Пользователь',
-    type: UserDto,
-  })
-  create(@Body() createUserDto: CreateUserDto) {
-    return this.userService.create(createUserDto);
-  }
 
   @Get()
   @ApiOperation({

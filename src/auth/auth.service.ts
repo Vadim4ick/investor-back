@@ -3,11 +3,13 @@ import {
   Injectable,
   UnauthorizedException,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { UserService } from 'src/user/user.service';
 import { jwtConstants } from './constants';
+import { CreateUserDto } from 'src/user/dto/create-user.dto';
 
 type JwtAccessPayload = { sub: number; email: string };
 type JwtRefreshPayload = { sub: number }; // refresh можно без email
@@ -50,6 +52,23 @@ export class AuthService {
   private async setRefreshTokenHash(userId: number, refreshToken: string) {
     const hash = await bcrypt.hash(refreshToken, 10);
     await this.usersService.updateRefreshTokenHash(userId, hash);
+  }
+
+  async registerAndLogin(dto: CreateUserDto) {
+    const user = await this.usersService.create(dto);
+
+    const [accessToken, refreshToken] = await Promise.all([
+      this.signAccessToken(user),
+      this.signRefreshToken({ id: user.id }),
+    ]);
+
+    await this.setRefreshTokenHash(user.id, refreshToken);
+
+    return {
+      accessToken,
+      refreshToken,
+      user,
+    };
   }
 
   async login(user: { id: number; email: string }) {

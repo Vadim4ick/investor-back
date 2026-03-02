@@ -9,7 +9,6 @@ import {
   Res,
   UnauthorizedException,
 } from '@nestjs/common';
-import { AppService } from './app.service';
 import { LocalAuthGuard } from './auth/local-auth.guard';
 import {
   ApiBearerAuth,
@@ -22,13 +21,36 @@ import { AuthService } from './auth/auth.service';
 import { TokenResponseDto } from './auth/dto/token.dto';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import type { Response, Request as ExpressRequest } from 'express';
+import { CreateUserDto } from './user/dto/create-user.dto';
 
 @Controller()
 export class AppController {
-  constructor(
-    private readonly appService: AppService,
-    private authService: AuthService,
-  ) {}
+  constructor(private authService: AuthService) {}
+
+  @Post('register')
+  @ApiOperation({ summary: 'Регистрация → access_token + refresh cookie' })
+  @ApiBody({ type: CreateUserDto })
+  @ApiOkResponse({ type: TokenResponseDto })
+  async register(
+    @Body() dto: CreateUserDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.registerAndLogin(dto);
+
+    if (result.refreshToken) {
+      const isProd = process.env.NODE_ENV === 'production';
+
+      res.cookie('refresh_token', result.refreshToken, {
+        httpOnly: true,
+        secure: isProd, // false на localhost
+        sameSite: isProd ? 'none' : 'lax',
+        path: '/', // чтобы точно доходило
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+    }
+
+    return { access_token: result.accessToken, user: result.user };
+  }
 
   @UseGuards(LocalAuthGuard)
   @Post('login')
@@ -69,6 +91,7 @@ export class AppController {
     if (!rt) throw new UnauthorizedException('No refresh cookie');
 
     const payload = await this.authService.verifyRefreshToken(rt); // {sub}
+
     const { accessToken, refreshToken: newRt } = await this.authService.refresh(
       payload.sub,
       rt,
