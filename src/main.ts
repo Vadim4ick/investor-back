@@ -10,7 +10,7 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe());
 
   app.enableCors({
-    origin: ['http://localhost:3000'],
+    origin: [process.env.FRONT_URL, 'http://localhost:8000'],
     credentials: true, // важно для cookie
   });
 

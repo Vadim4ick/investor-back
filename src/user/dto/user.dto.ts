@@ -6,7 +6,7 @@ export class UserDto {
   id: number;
 
   @ApiProperty({ example: 'vadim@example.com' })
-  email: string;
+  email?: string | null;
 
   @ApiProperty({ example: 'Vadim', required: false, nullable: true })
   username?: string | null;

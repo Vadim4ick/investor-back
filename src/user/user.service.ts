@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class UserService {
@@ -33,6 +34,41 @@ export class UserService {
     // лучше возвращать DTO/mapper-ом, но ок:
     const { password, ...result } = user;
     return result;
+  }
+
+  async findByTelegramId(telegramId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { telegramId },
+    });
+
+    if (!user) return null;
+
+    const { password, ...result } = user;
+
+    return result;
+  }
+
+  async createTelegramUser(data: {
+    telegramId: string;
+    telegramUsername?: string | null;
+    telegramFirstName: string;
+    telegramLastName?: string | null;
+    telegramPhotoUrl?: string | null;
+  }) {
+    const pass = crypto.randomBytes(32).toString('hex');
+
+    const user = await this.prisma.user.create({
+      data: {
+        authProvider: 'TELEGRAM',
+        username: `${data.telegramFirstName} ${data.telegramLastName}`,
+        telegramId: data.telegramId,
+        password: pass,
+      },
+    });
+
+    // const { password, ...result } = user;
+
+    return user;
   }
 
   async comparePasswords(pass: string, hash: string) {

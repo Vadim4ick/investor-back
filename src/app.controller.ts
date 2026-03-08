@@ -22,10 +22,40 @@ import { TokenResponseDto } from './auth/dto/token.dto';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import type { Response, Request as ExpressRequest } from 'express';
 import { CreateUserDto } from './user/dto/create-user.dto';
+import { TelegramLoginDto } from './auth/dto/telegram-login.dto';
+// import { TelegramLoginDto } from './auth/dto/telegram-login.dto';
 
 @Controller()
 export class AppController {
   constructor(private authService: AuthService) {}
+
+  @Post('auth/telegram')
+  @ApiOperation({
+    summary: 'Telegram login/register → access_token + refresh cookie',
+  })
+  async telegramAuth(
+    @Body() dto: TelegramLoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.loginOrRegisterWithTelegram(dto);
+
+    console.log('result', result);
+
+    const isProd = process.env.NODE_ENV === 'production';
+
+    res.cookie('refresh_token', result.refreshToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return {
+      access_token: result.accessToken,
+      user: result.user,
+    };
+  }
 
   @Post('register')
   @ApiOperation({ summary: 'Регистрация → access_token + refresh cookie' })

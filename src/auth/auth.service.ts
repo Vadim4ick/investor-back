@@ -3,7 +3,6 @@ import {
   Injectable,
   UnauthorizedException,
   ForbiddenException,
-  ConflictException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -11,8 +10,44 @@ import { UserService } from 'src/user/user.service';
 import { jwtConstants } from './constants';
 import { CreateUserDto } from 'src/user/dto/create-user.dto';
 
-type JwtAccessPayload = { sub: number; email: string };
+import * as crypto from 'crypto';
+import { TelegramLoginDto } from './dto/telegram-login.dto';
+
+type JwtAccessPayload = { sub: number; email?: string };
 type JwtRefreshPayload = { sub: number }; // refresh можно без email
+
+export function verifyTelegramAuth(
+  dto: TelegramLoginDto,
+  botToken: string,
+): void {
+  const { hash, ...data } = dto;
+
+  const dataCheckString = Object.entries(data)
+    .filter(
+      ([, value]) => value !== undefined && value !== null && value !== '',
+    )
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}=${value}`)
+    .join('\n');
+
+  const secretKey = crypto.createHash('sha256').update(botToken).digest();
+
+  const computedHash = crypto
+    .createHmac('sha256', secretKey)
+    .update(dataCheckString)
+    .digest('hex');
+
+  if (computedHash !== hash) {
+    throw new UnauthorizedException('Invalid Telegram auth hash');
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const maxAgeSeconds = 60 * 10;
+
+  if (now - dto.auth_date > maxAgeSeconds) {
+    throw new UnauthorizedException('Telegram auth data is too old');
+  }
+}
 
 @Injectable()
 export class AuthService {
@@ -32,8 +67,11 @@ export class AuthService {
     return safe; // {id,email,username...}
   }
 
-  private async signAccessToken(user: { id: number; email: string }) {
-    const payload: JwtAccessPayload = { sub: user.id, email: user.email };
+  private async signAccessToken(user: { id: number; email?: string | null }) {
+    const payload: JwtAccessPayload = {
+      sub: user.id,
+      ...(user.email ? { email: user.email } : {}),
+    };
 
     return this.jwtService.signAsync(payload, {
       secret: jwtConstants.secret_access,
@@ -80,6 +118,38 @@ export class AuthService {
     await this.setRefreshTokenHash(user.id, refreshToken);
 
     return { accessToken, refreshToken };
+  }
+
+  async loginOrRegisterWithTelegram(dto: TelegramLoginDto) {
+    verifyTelegramAuth(dto, process.env.TELEGRAM_BOT_TOKEN!);
+
+    let user = await this.usersService.findByTelegramId(String(dto.id));
+
+    if (!user) {
+      user = await this.usersService.createTelegramUser({
+        telegramId: String(dto.id),
+        telegramUsername: dto.username ?? null,
+        telegramFirstName: dto.first_name,
+        telegramLastName: dto.last_name ?? null,
+        telegramPhotoUrl: dto.photo_url ?? null,
+      });
+    } else {
+      // по желанию можно обновлять username/photo
+      // await this.usersService.updateTelegramProfile(...)
+    }
+
+    const [accessToken, refreshToken] = await Promise.all([
+      this.signAccessToken({ id: user.id }),
+      this.signRefreshToken({ id: user.id }),
+    ]);
+
+    await this.setRefreshTokenHash(user.id, refreshToken);
+
+    return {
+      accessToken,
+      refreshToken,
+      user,
+    };
   }
 
   async refresh(userId: number, refreshTokenFromCookie: string) {
