@@ -5,6 +5,7 @@ import { UpdateCategoryDto } from './dto/update-category.dto';
 import { PrismaService } from 'src/prisma.service';
 import { ApiResponseBuilder } from 'src/common/utils/api-response';
 import { handlePrismaError } from 'src/common/utils/handle-error';
+import { ApiExceptions } from 'src/common/exceptions/api.exception';
 
 @Injectable()
 export class CategoriesService {
@@ -15,6 +16,10 @@ export class CategoriesService {
       const category = await this.prisma.category.create({
         data: createCategoryDto,
       });
+
+      if (!category) {
+        ApiExceptions.notFound('Категория не создана');
+      }
 
       return ApiResponseBuilder.created(category);
     } catch (error) {
@@ -41,10 +46,7 @@ export class CategoriesService {
       });
 
       if (!category) {
-        throw new NotFoundException({
-          message: `Категория с id ${id} не найдена`,
-          data: null,
-        });
+        ApiExceptions.notFound('Категория не найдена');
       }
 
       return ApiResponseBuilder.success('Категория получена', category);
@@ -61,10 +63,7 @@ export class CategoriesService {
       });
 
       if (!existingCategory) {
-        throw new NotFoundException({
-          message: `Категория с id ${id} не найдена`,
-          data: null,
-        });
+        ApiExceptions.notFound(`Категория с id ${id} не найдена`);
       }
 
       const category = await this.prisma.category.update({
@@ -86,10 +85,7 @@ export class CategoriesService {
       });
 
       if (!existingCategory) {
-        throw new NotFoundException({
-          message: `Категория с id ${id} не найдена`,
-          data: null,
-        });
+        ApiExceptions.notFound(`Категория с id ${id} не найдена`);
       }
 
       await this.prisma.category.delete({

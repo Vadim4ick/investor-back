@@ -1,7 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class ErrorResponseDto {
-  @ApiProperty({ example: 'Категория не найдена' })
+  @ApiProperty({
+    example: 'Ошибка запроса',
+    description: 'Описание ошибки',
+  })
   message: string;
 
   @ApiProperty({
