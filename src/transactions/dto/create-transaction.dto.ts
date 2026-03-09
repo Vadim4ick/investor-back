@@ -20,6 +20,6 @@ export class CreateTransactionDto {
   @IsNumber()
   categoryId: number;
 
-  @ApiProperty({ example: 15, description: 'ID категории' })
+  @ApiProperty({ example: 1, description: 'ID категории' })
   userId: number;
 }

@@ -8,7 +8,6 @@ export class TransactionsService {
   constructor(private prisma: PrismaService) {}
 
   create(createTransactionDto: CreateTransactionDto, userId: number) {
-    console.log('userId', userId);
     return this.prisma.transaction.create({
       data: {
         ...createTransactionDto,
