@@ -1,39 +1,77 @@
 import {
-  Controller,
-  Request,
-  Post,
-  UseGuards,
-  Get,
   Body,
+  Controller,
+  Get,
+  Post,
   Req,
   Res,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
-import { LocalAuthGuard } from './auth/local-auth.guard';
+import type { Request as ExpressRequest, Response } from 'express';
 import {
   ApiBearerAuth,
   ApiBody,
   ApiOkResponse,
   ApiOperation,
+  ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { LoginDto } from './auth/dto/login.dto';
+import { CreateUserDto } from 'src/user/dto/create-user.dto';
+import { ErrorResponseDto } from 'src/common/dto/error-response.dto';
+
 import { AuthService } from './auth/auth.service';
-import { TokenResponseDto } from './auth/dto/token.dto';
-import { JwtAuthGuard } from './auth/jwt-auth.guard';
-import type { Response, Request as ExpressRequest } from 'express';
-import { CreateUserDto } from './user/dto/create-user.dto';
 import { TelegramLoginDto } from './auth/dto/telegram-login.dto';
-// import { TelegramLoginDto } from './auth/dto/telegram-login.dto';
+import {
+  AuthResponseDto,
+  LogoutResponseDto,
+  MeResponseDto,
+} from './auth/dto/auth.dto';
+import { LoginDto } from './auth/dto/login.dto';
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { LocalAuthGuard } from './auth/local-auth.guard';
 
 @ApiTags('Auth')
-@Controller()
-export class AppController {
-  constructor(private authService: AuthService) {}
+@Controller('auth')
+export class AuthController {
+  constructor(private readonly authService: AuthService) {}
 
-  @Post('auth/telegram')
+  private setRefreshCookie(res: Response, refreshToken: string) {
+    const isProd = process.env.NODE_ENV === 'production';
+
+    res.cookie('refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+  }
+
+  private clearRefreshCookie(res: Response) {
+    const isProd = process.env.NODE_ENV === 'production';
+
+    res.clearCookie('refresh_token', {
+      path: '/',
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+    });
+  }
+
+  @Post('telegram')
   @ApiOperation({
-    summary: 'Telegram login/register → access_token + refresh cookie',
+    summary: 'Вход или регистрация через Telegram',
+  })
+  @ApiBody({ type: TelegramLoginDto })
+  @ApiOkResponse({
+    description: 'Успешный вход через Telegram',
+    type: AuthResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Невалидные данные Telegram',
+    type: ErrorResponseDto,
   })
   async telegramAuth(
     @Body() dto: TelegramLoginDto,
@@ -41,133 +79,181 @@ export class AppController {
   ) {
     const result = await this.authService.loginOrRegisterWithTelegram(dto);
 
-    console.log('result', result);
+    if (!result.data) {
+      return result;
+    }
 
-    const isProd = process.env.NODE_ENV === 'production';
-
-    res.cookie('refresh_token', result.refreshToken, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? 'none' : 'lax',
-      path: '/',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    this.setRefreshCookie(res, result.data.refreshToken);
 
     return {
-      access_token: result.accessToken,
-      user: result.user,
+      message: result.message,
+      data: {
+        accessToken: result.data.accessToken,
+        user: result.data.user,
+      },
     };
   }
 
   @Post('register')
-  @ApiOperation({ summary: 'Регистрация → access_token + refresh cookie' })
+  @ApiOperation({ summary: 'Регистрация пользователя' })
   @ApiBody({ type: CreateUserDto })
-  @ApiOkResponse({ type: TokenResponseDto })
+  @ApiOkResponse({
+    description: 'Пользователь успешно зарегистрирован',
+    type: AuthResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Некорректные данные',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Пользователь уже существует',
+    type: ErrorResponseDto,
+  })
   async register(
     @Body() dto: CreateUserDto,
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.authService.registerAndLogin(dto);
 
-    if (result.refreshToken) {
-      const isProd = process.env.NODE_ENV === 'production';
-
-      res.cookie('refresh_token', result.refreshToken, {
-        httpOnly: true,
-        secure: isProd, // false на localhost
-        sameSite: isProd ? 'none' : 'lax',
-        path: '/', // чтобы точно доходило
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+    if (!result.data) {
+      return result;
     }
 
-    return { access_token: result.accessToken, user: result.user };
+    this.setRefreshCookie(res, result.data.refreshToken);
+
+    return {
+      message: result.message,
+      data: {
+        accessToken: result.data.accessToken,
+        user: result.data.user,
+      },
+    };
   }
 
   @UseGuards(LocalAuthGuard)
   @Post('login')
-  @ApiOperation({ summary: 'Логин → access_token + refresh cookie' })
+  @ApiOperation({ summary: 'Логин пользователя' })
   @ApiBody({ type: LoginDto })
-  @ApiOkResponse({ type: TokenResponseDto })
+  @ApiOkResponse({
+    description: 'Успешная авторизация',
+    type: AuthResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Неверный email или пароль',
+    type: ErrorResponseDto,
+  })
   async login(
     @Body() _dto: LoginDto,
     @Req() req: ExpressRequest,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<TokenResponseDto> {
-    const { accessToken, refreshToken } = await this.authService.login(
-      req.user as { id: number; email: string },
+  ) {
+    const result = await this.authService.login(
+      req.user as { id: number; email?: string | null },
     );
 
-    const isProd = process.env.NODE_ENV === 'production';
+    if (!result.data) {
+      return result;
+    }
 
-    res.cookie('refresh_token', refreshToken, {
-      httpOnly: true,
-      secure: isProd, // false на localhost
-      sameSite: isProd ? 'none' : 'lax',
-      path: '/', // чтобы точно доходило
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    this.setRefreshCookie(res, result.data.refreshToken);
 
-    return { access_token: accessToken };
+    return {
+      message: result.message,
+      data: {
+        accessToken: result.data.accessToken,
+        user: null,
+      },
+    };
   }
 
   @Post('refresh')
-  @ApiOperation({ summary: 'Обновить access по refresh cookie (rotation)' })
-  @ApiOkResponse({ type: TokenResponseDto })
+  @ApiOperation({ summary: 'Обновить access token по refresh cookie' })
+  @ApiOkResponse({
+    description: 'Токены успешно обновлены',
+    type: AuthResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Refresh cookie отсутствует или невалиден',
+    type: ErrorResponseDto,
+  })
   async refresh(
     @Req() req: ExpressRequest,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<TokenResponseDto> {
-    const rt = req.cookies?.refresh_token as string;
+  ) {
+    const rt = req.cookies?.refresh_token as string | undefined;
 
-    if (!rt) throw new UnauthorizedException('No refresh cookie');
+    if (!rt) {
+      throw new UnauthorizedException({
+        message: 'Refresh cookie отсутствует',
+        data: null,
+      });
+    }
 
-    const payload = await this.authService.verifyRefreshToken(rt); // {sub}
+    const payload = await this.authService.verifyRefreshToken(rt);
+    const result = await this.authService.refresh(payload.sub, rt);
 
-    const { accessToken, refreshToken: newRt } = await this.authService.refresh(
-      payload.sub,
-      rt,
-    );
+    if (!result.data) {
+      return result;
+    }
 
-    const isProd = process.env.NODE_ENV === 'production';
+    this.setRefreshCookie(res, result.data.refreshToken);
 
-    res.cookie('refresh_token', newRt, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? 'none' : 'lax',
-      path: '/', // чтобы точно доходило
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    return { access_token: accessToken };
+    return {
+      message: result.message,
+      data: {
+        accessToken: result.data.accessToken,
+        user: null,
+      },
+    };
   }
 
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   @Post('logout')
-  @ApiOperation({ summary: 'Logout: удалить refresh в БД и очистить cookie' })
+  @ApiOperation({ summary: 'Выход пользователя' })
+  @ApiOkResponse({
+    description: 'Пользователь успешно вышел',
+    type: LogoutResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Пользователь не авторизован',
+    type: ErrorResponseDto,
+  })
   async logout(
     @Req() req: ExpressRequest,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const userId = (req.user as { sub: number; email: string }).sub; // если payload {sub,email}
+    const userId = (req.user as { sub: number; email?: string }).sub;
 
-    await this.authService.logout(userId);
+    const result = await this.authService.logout(userId);
 
-    const isProd = process.env.NODE_ENV === 'production';
-    res.clearCookie('refresh_token', {
-      path: '/',
-      httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? 'none' : 'lax',
-    });
-    return { ok: true };
+    this.clearRefreshCookie(res);
+
+    return result;
   }
 
   @UseGuards(JwtAuthGuard)
-  @Get('me')
   @ApiBearerAuth('access-token')
+  @Get('me')
+  @ApiOperation({ summary: 'Получить текущего пользователя' })
+  @ApiOkResponse({
+    description: 'Текущий пользователь получен',
+    type: MeResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Пользователь не авторизован',
+    type: ErrorResponseDto,
+  })
   me(@Req() req: ExpressRequest) {
-    return req.user;
+    return {
+      message: 'Текущий пользователь получен',
+      data: req.user,
+    };
   }
 }

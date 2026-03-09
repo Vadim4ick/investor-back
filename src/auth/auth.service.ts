@@ -1,20 +1,21 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import {
-  Injectable,
-  UnauthorizedException,
   ForbiddenException,
+  Injectable,
+  InternalServerErrorException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
+
 import { UserService } from 'src/user/user.service';
 import { jwtConstants } from './constants';
 import { CreateUserDto } from 'src/user/dto/create-user.dto';
-
-import * as crypto from 'crypto';
 import { TelegramLoginDto } from './dto/telegram-login.dto';
+import { ApiResponseBuilder } from 'src/common/utils/api-response';
 
 type JwtAccessPayload = { sub: number; email?: string };
-type JwtRefreshPayload = { sub: number }; // refresh можно без email
+type JwtRefreshPayload = { sub: number };
 
 export function verifyTelegramAuth(
   dto: TelegramLoginDto,
@@ -38,33 +39,38 @@ export function verifyTelegramAuth(
     .digest('hex');
 
   if (computedHash !== hash) {
-    throw new UnauthorizedException('Invalid Telegram auth hash');
+    throw new UnauthorizedException({
+      message: 'Невалидный Telegram hash',
+      data: null,
+    });
   }
 
   const now = Math.floor(Date.now() / 1000);
   const maxAgeSeconds = 60 * 10;
 
   if (now - dto.auth_date > maxAgeSeconds) {
-    throw new UnauthorizedException('Telegram auth data is too old');
+    throw new UnauthorizedException({
+      message: 'Данные Telegram устарели',
+      data: null,
+    });
   }
 }
 
 @Injectable()
 export class AuthService {
   constructor(
-    private usersService: UserService,
-    private jwtService: JwtService,
+    private readonly usersService: UserService,
+    private readonly jwtService: JwtService,
   ) {}
 
   async validateUser(email: string, pass: string) {
-    const user = await this.usersService.findByEmail(email); // должен возвращать user|null
+    const user = await this.usersService.findRawByEmail(email);
     if (!user) return null;
 
     const ok = await this.usersService.comparePasswords(pass, user.password);
     if (!ok) return null;
 
-    const { password, refreshTokenHash, ...safe } = user;
-    return safe; // {id,email,username...}
+    return this.usersService.sanitizeUser(user);
   }
 
   private async signAccessToken(user: { id: number; email?: string | null }) {
@@ -81,6 +87,7 @@ export class AuthService {
 
   private async signRefreshToken(user: { id: number }) {
     const payload: JwtRefreshPayload = { sub: user.id };
+
     return this.jwtService.signAsync(payload, {
       secret: jwtConstants.secret_refresh,
       expiresIn: '7d',
@@ -88,28 +95,36 @@ export class AuthService {
   }
 
   private async setRefreshTokenHash(userId: number, refreshToken: string) {
-    const hash = await bcrypt.hash(refreshToken, 10);
-    await this.usersService.updateRefreshTokenHash(userId, hash);
+    try {
+      const hash = await bcrypt.hash(refreshToken, 10);
+      await this.usersService.updateRefreshTokenHash(userId, hash);
+    } catch {
+      throw new InternalServerErrorException({
+        message: 'Не удалось сохранить refresh token',
+        data: null,
+      });
+    }
   }
 
   async registerAndLogin(dto: CreateUserDto) {
-    const user = await this.usersService.create(dto);
+    const user = await this.usersService.createRaw(dto);
+    const safeUser = this.usersService.sanitizeUser(user);
 
     const [accessToken, refreshToken] = await Promise.all([
-      this.signAccessToken(user),
+      this.signAccessToken(safeUser),
       this.signRefreshToken({ id: user.id }),
     ]);
 
     await this.setRefreshTokenHash(user.id, refreshToken);
 
-    return {
+    return ApiResponseBuilder.success('Регистрация выполнена успешно', {
       accessToken,
       refreshToken,
-      user,
-    };
+      user: safeUser,
+    });
   }
 
-  async login(user: { id: number; email: string }) {
+  async login(user: { id: number; email?: string | null }) {
     const [accessToken, refreshToken] = await Promise.all([
       this.signAccessToken(user),
       this.signRefreshToken({ id: user.id }),
@@ -117,11 +132,23 @@ export class AuthService {
 
     await this.setRefreshTokenHash(user.id, refreshToken);
 
-    return { accessToken, refreshToken };
+    return ApiResponseBuilder.success('Авторизация выполнена успешно', {
+      accessToken,
+      refreshToken,
+    });
   }
 
   async loginOrRegisterWithTelegram(dto: TelegramLoginDto) {
-    verifyTelegramAuth(dto, process.env.TELEGRAM_BOT_TOKEN!);
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+
+    if (!botToken) {
+      throw new InternalServerErrorException({
+        message: 'TELEGRAM_BOT_TOKEN не задан',
+        data: null,
+      });
+    }
+
+    verifyTelegramAuth(dto, botToken);
 
     let user = await this.usersService.findByTelegramId(String(dto.id));
 
@@ -133,59 +160,73 @@ export class AuthService {
         telegramLastName: dto.last_name ?? null,
         telegramPhotoUrl: dto.photo_url ?? null,
       });
-    } else {
-      // по желанию можно обновлять username/photo
-      // await this.usersService.updateTelegramProfile(...)
     }
 
     const [accessToken, refreshToken] = await Promise.all([
-      this.signAccessToken({ id: user.id }),
+      this.signAccessToken({ id: user.id, email: user.email ?? undefined }),
       this.signRefreshToken({ id: user.id }),
     ]);
 
     await this.setRefreshTokenHash(user.id, refreshToken);
 
-    return {
+    return ApiResponseBuilder.success('Вход через Telegram выполнен успешно', {
       accessToken,
       refreshToken,
       user,
-    };
+    });
   }
 
   async refresh(userId: number, refreshTokenFromCookie: string) {
-    const user = await this.usersService.findOne(userId);
-    if (!user?.refreshTokenHash)
-      throw new ForbiddenException('No refresh token');
+    const user = await this.usersService.findRawByIdOrThrow(userId);
+
+    if (!user.refreshTokenHash) {
+      throw new ForbiddenException({
+        message: 'Refresh token отсутствует',
+        data: null,
+      });
+    }
 
     const match = await bcrypt.compare(
       refreshTokenFromCookie,
       user.refreshTokenHash,
     );
-    if (!match) throw new ForbiddenException('Refresh token mismatch');
 
-    // rotation
+    if (!match) {
+      throw new ForbiddenException({
+        message: 'Refresh token не совпадает',
+        data: null,
+      });
+    }
+
     const [accessToken, newRefreshToken] = await Promise.all([
-      this.signAccessToken({ id: user.id, email: user.email }),
+      this.signAccessToken({ id: user.id, email: user.email ?? undefined }),
       this.signRefreshToken({ id: user.id }),
     ]);
 
     await this.setRefreshTokenHash(user.id, newRefreshToken);
 
-    return { accessToken, refreshToken: newRefreshToken };
+    return ApiResponseBuilder.success('Токены успешно обновлены', {
+      accessToken,
+      refreshToken: newRefreshToken,
+    });
   }
 
   async logout(userId: number) {
     await this.usersService.updateRefreshTokenHash(userId, null);
-    return { ok: true };
+
+    return ApiResponseBuilder.success('Выход выполнен успешно', null);
   }
 
   async verifyRefreshToken(token: string): Promise<{ sub: number }> {
     try {
       return await this.jwtService.verifyAsync(token, {
-        secret: process.env.JWT_REFRESH_SECRET,
+        secret: jwtConstants.secret_refresh,
       });
     } catch {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new UnauthorizedException({
+        message: 'Невалидный refresh token',
+        data: null,
+      });
     }
   }
 }
