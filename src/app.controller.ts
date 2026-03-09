@@ -194,6 +194,7 @@ export class AuthController {
     }
 
     const payload = await this.authService.verifyRefreshToken(rt);
+
     const result = await this.authService.refresh(payload.sub, rt);
 
     if (!result.data) {
