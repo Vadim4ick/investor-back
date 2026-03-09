@@ -15,6 +15,7 @@ import {
   ApiBody,
   ApiOkResponse,
   ApiOperation,
+  ApiTags,
 } from '@nestjs/swagger';
 import { LoginDto } from './auth/dto/login.dto';
 import { AuthService } from './auth/auth.service';
@@ -25,6 +26,7 @@ import { CreateUserDto } from './user/dto/create-user.dto';
 import { TelegramLoginDto } from './auth/dto/telegram-login.dto';
 // import { TelegramLoginDto } from './auth/dto/telegram-login.dto';
 
+@ApiTags('Auth')
 @Controller()
 export class AppController {
   constructor(private authService: AuthService) {}
