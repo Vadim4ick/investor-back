@@ -26,6 +26,7 @@ import {
   CategoryResponseDto,
   MessageResponseDto,
 } from './dto/category-response-dto';
+import { ErrorResponseDto } from 'src/common/dto/error-response.dto';
 
 @ApiTags('Categories')
 @ApiBearerAuth('access-token')
@@ -40,14 +41,17 @@ export class CategoriesController {
   @ApiResponse({
     status: 201,
     description: 'Категория успешно создана',
+    type: CategoryResponseDto,
   })
   @ApiResponse({
     status: 400,
     description: 'Некорректные данные',
+    type: ErrorResponseDto,
   })
   @ApiResponse({
     status: 401,
     description: 'Пользователь не авторизован',
+    type: ErrorResponseDto,
   })
   create(@Body() createCategoryDto: CreateCategoryDto) {
     return this.categoriesService.create(createCategoryDto);
@@ -63,6 +67,7 @@ export class CategoriesController {
   @ApiResponse({
     status: 401,
     description: 'Пользователь не авторизован',
+    type: ErrorResponseDto,
   })
   findAll() {
     return this.categoriesService.findAll();
@@ -84,10 +89,12 @@ export class CategoriesController {
   @ApiResponse({
     status: 404,
     description: 'Категория не найдена',
+    type: ErrorResponseDto,
   })
   @ApiResponse({
     status: 401,
     description: 'Пользователь не авторизован',
+    type: ErrorResponseDto,
   })
   findOne(@Param('id') id: string) {
     return this.categoriesService.findOne(+id);
@@ -110,14 +117,17 @@ export class CategoriesController {
   @ApiResponse({
     status: 400,
     description: 'Некорректные данные',
+    type: ErrorResponseDto,
   })
   @ApiResponse({
     status: 404,
     description: 'Категория не найдена',
+    type: ErrorResponseDto,
   })
   @ApiResponse({
     status: 401,
     description: 'Пользователь не авторизован',
+    type: ErrorResponseDto,
   })
   update(
     @Param('id') id: string,
@@ -142,10 +152,12 @@ export class CategoriesController {
   @ApiResponse({
     status: 404,
     description: 'Категория не найдена',
+    type: ErrorResponseDto,
   })
   @ApiResponse({
     status: 401,
     description: 'Пользователь не авторизован',
+    type: ErrorResponseDto,
   })
   remove(@Param('id') id: string) {
     return this.categoriesService.remove(+id);
