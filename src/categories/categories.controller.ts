@@ -21,6 +21,11 @@ import { CategoriesService } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import {
+  CategoriesResponseDto,
+  CategoryResponseDto,
+  MessageResponseDto,
+} from './dto/category-response-dto';
 
 @ApiTags('Categories')
 @ApiBearerAuth('access-token')
@@ -53,6 +58,7 @@ export class CategoriesController {
   @ApiResponse({
     status: 200,
     description: 'Список категорий успешно получен',
+    type: CategoriesResponseDto,
   })
   @ApiResponse({
     status: 401,
@@ -73,6 +79,7 @@ export class CategoriesController {
   @ApiResponse({
     status: 200,
     description: 'Категория успешно найдена',
+    type: CategoryResponseDto,
   })
   @ApiResponse({
     status: 404,
@@ -98,6 +105,7 @@ export class CategoriesController {
   @ApiResponse({
     status: 200,
     description: 'Категория успешно обновлена',
+    type: CategoryResponseDto,
   })
   @ApiResponse({
     status: 400,
@@ -129,6 +137,7 @@ export class CategoriesController {
   @ApiResponse({
     status: 200,
     description: 'Категория успешно удалена',
+    type: MessageResponseDto,
   })
   @ApiResponse({
     status: 404,
