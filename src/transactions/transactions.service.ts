@@ -7,6 +7,7 @@ import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { handlePrismaError } from 'src/common/utils/handle-error';
 import { ApiExceptions } from 'src/common/exceptions/api.exception';
+import { GetTransactionsQueryDto } from './dto/get-transactions-query.dto';
 
 @Injectable()
 export class TransactionsService {
@@ -27,26 +28,47 @@ export class TransactionsService {
     }
   }
 
-  async findAll(userId: number) {
+  async findAll(userId: number, query: GetTransactionsQueryDto) {
     try {
-      const transactions = await this.prisma.transaction.findMany({
-        where: { userId },
-        orderBy: { createdAt: 'desc' },
-      });
+      const page = query.page ?? 1;
+      const limit = query.limit ?? 5;
+      const skip = (page - 1) * limit;
 
-      return ApiResponseBuilder.success(
-        'Список транзакций получен',
-        transactions,
-      );
+      const [transactions, total] = await this.prisma.$transaction([
+        this.prisma.transaction.findMany({
+          where: { userId },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+          include: { category: true },
+        }),
+        this.prisma.transaction.count({
+          where: { userId },
+        }),
+      ]);
+
+      const totalPages = Math.ceil(total / limit);
+
+      return ApiResponseBuilder.success('Список транзакций получен', {
+        data: transactions,
+        meta: {
+          total,
+          page,
+          limit,
+          totalPages,
+          hasPrevPage: page > 1,
+          hasNextPage: page < totalPages,
+        },
+      });
     } catch (error) {
       handlePrismaError(error);
     }
   }
-
   async findOne(id: number, userId: number) {
     try {
       const transaction = await this.prisma.transaction.findFirst({
         where: { id, userId },
+        include: { category: true },
       });
 
       if (!transaction) {

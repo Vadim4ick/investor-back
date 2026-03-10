@@ -2,6 +2,7 @@ import { BaseApiResponseDto } from 'src/common/dto/base-api-response.dto';
 
 import { ApiProperty } from '@nestjs/swagger';
 import { TransactionDto } from './transaction.dto';
+import { PaginationMetaDto } from 'src/common/dto/pagination-meta.dto';
 
 export class TransactionResponseDto extends BaseApiResponseDto<TransactionDto> {
   @ApiProperty({
@@ -17,6 +18,9 @@ export class TransactionsResponseDto extends BaseApiResponseDto<
     type: [TransactionDto],
   })
   declare data: TransactionDto[];
+
+  @ApiProperty({ type: PaginationMetaDto })
+  declare meta: PaginationMetaDto;
 }
 
 export class MessageResponseDto {

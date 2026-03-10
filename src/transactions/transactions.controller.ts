@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -31,6 +32,7 @@ import {
   TransactionResponseDto,
   TransactionsResponseDto,
 } from './dto/transaction-response.dto';
+import { GetTransactionsQueryDto } from './dto/get-transactions-query.dto';
 
 @ApiTags('Transactions')
 @ApiBearerAuth('access-token')
@@ -76,10 +78,12 @@ export class TransactionsController {
     description: 'Пользователь не авторизован',
     type: ErrorResponseDto,
   })
-  findAll(@CurrentUser() user: { sub: number; email?: string }) {
-    return this.transactionsService.findAll(user.sub);
+  findAll(
+    @CurrentUser() user: { sub: number; email?: string },
+    @Query() query: GetTransactionsQueryDto,
+  ) {
+    return this.transactionsService.findAll(user.sub, query);
   }
-
   @Get(':id')
   @ApiOperation({ summary: 'Получить транзакцию по ID' })
   @ApiParam({
