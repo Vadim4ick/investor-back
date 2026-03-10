@@ -50,7 +50,7 @@ export class TransactionsService {
       const totalPages = Math.ceil(total / limit);
 
       return ApiResponseBuilder.success('Список транзакций получен', {
-        data: transactions,
+        items: transactions,
         meta: {
           total,
           page,

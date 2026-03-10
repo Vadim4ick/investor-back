@@ -8,19 +8,23 @@ export class TransactionResponseDto extends BaseApiResponseDto<TransactionDto> {
   @ApiProperty({
     type: TransactionDto,
   })
-  declare data: TransactionDto;
+  declare items: TransactionDto;
 }
 
-export class TransactionsResponseDto extends BaseApiResponseDto<
-  TransactionDto[]
-> {
-  @ApiProperty({
-    type: [TransactionDto],
-  })
-  declare data: TransactionDto[];
+class TransactionsPaginatedDataDto {
+  @ApiProperty({ type: [TransactionDto] })
+  items: TransactionDto[];
 
   @ApiProperty({ type: PaginationMetaDto })
-  declare meta: PaginationMetaDto;
+  meta: PaginationMetaDto;
+}
+
+export class TransactionsResponseDto {
+  @ApiProperty()
+  message: string;
+
+  @ApiProperty({ type: TransactionsPaginatedDataDto })
+  data: TransactionsPaginatedDataDto;
 }
 
 export class MessageResponseDto {
