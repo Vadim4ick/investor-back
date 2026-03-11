@@ -30,8 +30,8 @@ export class TransactionsService {
 
   async findAll(userId: number, query: GetTransactionsQueryDto) {
     try {
-      const page = query.page ?? 1;
-      const limit = query.limit ?? 5;
+      const page = Number(query.page ?? 1);
+      const limit = Number(query.limit ?? 5);
       const skip = (page - 1) * limit;
 
       const [transactions, total] = await this.prisma.$transaction([
@@ -61,9 +61,11 @@ export class TransactionsService {
         },
       });
     } catch (error) {
+      console.error(error);
       handlePrismaError(error);
     }
   }
+
   async findOne(id: number, userId: number) {
     try {
       const transaction = await this.prisma.transaction.findFirst({
