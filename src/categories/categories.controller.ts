@@ -27,6 +27,7 @@ import {
   MessageResponseDto,
 } from './dto/category-response-dto';
 import { ErrorResponseDto } from 'src/common/dto/error-response.dto';
+import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 
 @ApiTags('Categories')
 @ApiBearerAuth('access-token')
@@ -53,8 +54,11 @@ export class CategoriesController {
     description: 'Пользователь не авторизован',
     type: ErrorResponseDto,
   })
-  create(@Body() createCategoryDto: CreateCategoryDto) {
-    return this.categoriesService.create(createCategoryDto);
+  create(
+    @Body() createCategoryDto: CreateCategoryDto,
+    @CurrentUser() user: { sub: number; email?: string },
+  ) {
+    return this.categoriesService.create(createCategoryDto, user.sub);
   }
 
   @Get()
@@ -69,8 +73,8 @@ export class CategoriesController {
     description: 'Пользователь не авторизован',
     type: ErrorResponseDto,
   })
-  findAll() {
-    return this.categoriesService.findAll();
+  findAll(@CurrentUser() user: { sub: number; email?: string }) {
+    return this.categoriesService.findAll(user.sub);
   }
 
   @Get(':id')

@@ -11,10 +11,13 @@ import { ApiExceptions } from 'src/common/exceptions/api.exception';
 export class CategoriesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createCategoryDto: CreateCategoryDto) {
+  async create(createCategoryDto: CreateCategoryDto, userId: number) {
     try {
       const category = await this.prisma.category.create({
-        data: createCategoryDto,
+        data: {
+          ...createCategoryDto,
+          userId,
+        },
       });
 
       if (!category) {
@@ -27,9 +30,12 @@ export class CategoriesService {
     }
   }
 
-  async findAll() {
+  async findAll(userId: number) {
     try {
       const categories = await this.prisma.category.findMany({
+        where: {
+          OR: [{ userId }, { userId: null }],
+        },
         orderBy: { id: 'asc' },
       });
 
