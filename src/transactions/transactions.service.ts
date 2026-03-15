@@ -130,4 +130,135 @@ export class TransactionsService {
       handlePrismaError(error);
     }
   }
+
+  async getSummary(userId: number, query: { from?: string; to?: string }) {
+    try {
+      const where = this.buildSummaryWhere(userId, query.from, query.to);
+
+      const [incomeAgg, expenseAgg, grouped, categories] =
+        await this.prisma.$transaction([
+          this.prisma.transaction.aggregate({
+            where: {
+              ...where,
+              type: 'INCOME',
+            },
+            _sum: {
+              price: true,
+            },
+          }),
+          this.prisma.transaction.aggregate({
+            where: {
+              ...where,
+              type: 'EXPENDITURE',
+            },
+            _sum: {
+              price: true,
+            },
+          }),
+          this.prisma.transaction.groupBy({
+            by: ['categoryId', 'type'],
+            where,
+            orderBy: [{ type: 'asc' }, { categoryId: 'asc' }],
+            _sum: {
+              price: true,
+            },
+          }),
+          this.prisma.category.findMany({
+            where: { userId },
+            select: {
+              id: true,
+              name: true,
+            },
+          }),
+        ]);
+
+      const income = incomeAgg._sum.price ?? 0;
+      const expense = expenseAgg._sum.price ?? 0;
+      const balance = income - expense;
+      const savingsPercent =
+        income > 0 ? Math.round((balance / income) * 100) : 0;
+
+      const categoryMap = new Map(
+        categories.map((category) => [category.id, category.name]),
+      );
+
+      const mapCategoryItem = (item: {
+        categoryId: number | null;
+        _sum?: { price?: number | null } | null;
+      }) => ({
+        categoryId: item.categoryId,
+        categoryName:
+          item.categoryId === null
+            ? 'Без категории'
+            : (categoryMap.get(item.categoryId) ?? 'Без категории'),
+        amount: item._sum?.price ?? 0,
+      });
+
+      const incomeByCategory = grouped
+        .filter((item) => item.type === 'INCOME')
+        .map(mapCategoryItem)
+        .sort((a, b) => b.amount - a.amount);
+
+      const expenseByCategory = grouped
+        .filter((item) => item.type === 'EXPENDITURE')
+        .map(mapCategoryItem)
+        .sort((a, b) => b.amount - a.amount);
+
+      return ApiResponseBuilder.success('Сводка по транзакциям получена', {
+        totals: {
+          income,
+          expense,
+          balance,
+          savingsPercent,
+        },
+        incomeByCategory,
+        expenseByCategory,
+        period: {
+          from: query.from ? this.startOfDay(query.from).toISOString() : null,
+          to: query.to ? this.endOfDay(query.to).toISOString() : null,
+        },
+      });
+    } catch (error) {
+      console.error(error);
+      handlePrismaError(error);
+    }
+  }
+
+  private buildSummaryWhere(userId: number, from?: string, to?: string) {
+    const where: {
+      userId: number;
+      createdAt?: {
+        gte?: Date;
+        lte?: Date;
+      };
+    } = {
+      userId,
+    };
+
+    if (from || to) {
+      where.createdAt = {};
+
+      if (from) {
+        where.createdAt.gte = this.startOfDay(from);
+      }
+
+      if (to) {
+        where.createdAt.lte = this.endOfDay(to);
+      }
+    }
+
+    return where;
+  }
+
+  private startOfDay(date: string): Date {
+    const parsed = new Date(date);
+    parsed.setHours(0, 0, 0, 0);
+    return parsed;
+  }
+
+  private endOfDay(date: string): Date {
+    const parsed = new Date(date);
+    parsed.setHours(23, 59, 59, 999);
+    return parsed;
+  }
 }

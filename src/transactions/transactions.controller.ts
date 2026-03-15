@@ -33,6 +33,8 @@ import {
   TransactionsResponseDto,
 } from './dto/transaction-response.dto';
 import { GetTransactionsQueryDto } from './dto/get-transactions-query.dto';
+import { TransactionsSummaryResponseDto } from './dto/transaction-summary-response.dto';
+import { GetTransactionsSummaryQueryDto } from './dto/get-transactions-summary-query.dto';
 
 @ApiTags('Transactions')
 @ApiBearerAuth('access-token')
@@ -84,6 +86,26 @@ export class TransactionsController {
   ) {
     return this.transactionsService.findAll(user.sub, query);
   }
+
+  @Get('summary')
+  @ApiOperation({ summary: 'Получить сводку по транзакциям пользователя' })
+  @ApiResponse({
+    status: 200,
+    description: 'Сводка по транзакциям получена',
+    type: TransactionsSummaryResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Пользователь не авторизован',
+    type: ErrorResponseDto,
+  })
+  getSummary(
+    @CurrentUser() user: { sub: number; email?: string },
+    @Query() query: GetTransactionsSummaryQueryDto,
+  ) {
+    return this.transactionsService.getSummary(user.sub, query);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Получить транзакцию по ID' })
   @ApiParam({
